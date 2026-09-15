@@ -36,7 +36,7 @@ export function createAvatarPicker(storage: Pick<Storage, 'getItem' | 'setItem'>
   const buttons: HTMLButtonElement[] = [];
   for (const avatar of AVATARS) {
     const button = document.createElement('button'); button.type = 'button'; button.className = 'avatar-option';
-    button.setAttribute('aria-label', avatar.label); button.setAttribute('aria-pressed', String(avatar.id === selected));
+    button.setAttribute('aria-label', avatar.label); button.setAttribute('aria-pressed', String(avatar.id === selected)); button.dataset.avatarId = avatar.id;
     const portrait = document.createElement('span'); portrait.className = 'avatar-portrait'; portrait.style.backgroundImage = `url("${assetUrl(AVATAR_ATLAS_URL)}")`; portrait.setAttribute('aria-hidden', 'true');
     const { column, row } = avatarCell(avatar.id); portrait.style.backgroundPosition = `${column * 25}% ${row * 100}%`;
     const label = document.createElement('span'); label.textContent = avatar.label;

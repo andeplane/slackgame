@@ -211,7 +211,7 @@ function drawSprite(ctx: CanvasRenderingContext2D, image: HTMLImageElement, x: n
   ctx.restore();
 }
 
-export function drawArena(ctx: CanvasRenderingContext2D, snapshot: ViewSnapshot, now: number, theme: ThemeDefinition, sprites: ThemeSprites): void {
+export function drawArena(ctx: CanvasRenderingContext2D, snapshot: ViewSnapshot, now: number, theme: ThemeDefinition, sprites: ThemeSprites, selfId?: string): void {
   const { width, height } = snapshot;
   ctx.clearRect(0, 0, width, height);
   ctx.drawImage(arenaBackground(width, height, snapshot.boundaryInset, theme), 0, 0);
@@ -344,8 +344,10 @@ export function drawArena(ctx: CanvasRenderingContext2D, snapshot: ViewSnapshot,
     else { ctx.translate(player.x, player.y); ctx.rotate(player.angle); ctx.fillStyle = '#f7ffff'; ctx.strokeStyle = color; ctx.lineWidth = 5; ctx.beginPath(); ctx.moveTo(16, 0); ctx.lineTo(-11, -10); ctx.lineTo(-5, 0); ctx.lineTo(-11, 10); ctx.closePath(); ctx.fill(); ctx.stroke(); }
     ctx.restore();
     if (player.alive) {
-      ctx.save(); ctx.font = '10px "Press Start 2P"'; ctx.textAlign = 'center'; ctx.fillStyle = color; ctx.shadowColor = color; ctx.shadowBlur = 8;
-      ctx.fillText(`P${player.slot + 1}`, Math.round(player.x), Math.round(player.y - 29)); ctx.restore();
+      const self = player.id === selfId;
+      if (self) { ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.globalAlpha = .55 + Math.sin(now / 180) * .25; ctx.beginPath(); ctx.arc(player.x, player.y, 30 + Math.sin(now / 180) * 2, 0, Math.PI * 2); ctx.stroke(); ctx.restore(); }
+      ctx.save(); ctx.font = `${self ? 12 : 10}px "Press Start 2P"`; ctx.textAlign = 'center'; ctx.fillStyle = self ? '#ffffff' : color; ctx.shadowColor = color; ctx.shadowBlur = 8;
+      ctx.fillText(self ? 'YOU' : `P${player.slot + 1}`, Math.round(player.x), Math.round(player.y - (self ? 32 : 29))); ctx.restore();
     }
   }
   drawInkClouds(ctx, snapshot, snapshot.tick);

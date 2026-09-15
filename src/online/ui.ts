@@ -32,6 +32,10 @@ import { createJoinCard, createJoinForm } from './join-form.js';
 import { safeStorage } from '../client/safe-storage.js';
 import { POWERUP_GUIDE } from '../client/powerup-guide.js';
 import { createPowerupGuide } from '../client/powerup-guide-view.js';
+import { announcementFor, eliminationLine, roundClock } from '../client/arena-announcer.js';
+import { plainStatus } from './status-copy.js';
+const LAST_ROOM_KEY='fuse-last-room';
+const reducedMotion=()=>matchMedia('(prefers-reduced-motion: reduce)').matches;
 const storage=safeStorage(()=>localStorage);
 const node=<K extends keyof HTMLElementTagNameMap>(tag:K,text='',className='')=>{const e=document.createElement(tag);e.textContent=text;e.className=className;return e;};
 /** Clipboard write with an execCommand fallback. `navigator.clipboard` is secure-context only, so on an
@@ -74,6 +78,8 @@ export async function startOnline():Promise<void>{
     mode.setAttribute('aria-label','Where will you play?');input.setAttribute('aria-label','Room code');error.setAttribute('role','alert');
     const createRow=node('div','','landing-create');createRow.append(mode,create);
     const joinRow=node('div','','landing-join');joinRow.append(input,join);input.onkeydown=event=>{if(event.key==='Enter')join.click();};
+    // The last room this browser was in is one tap away; a closed room still lands on its ROOM CLOSED card, which forgets it.
+    const lastRoom=read(LAST_ROOM_KEY);if(lastRoom&&validRoomCode(lastRoom)){const rejoin=node('button',`REJOIN ${lastRoom}`,'landing-rejoin');rejoin.title='Return to the room you were in last';rejoin.onclick=()=>{location.href=appUrl(`?room=${lastRoom}`);};joinRow.append(rejoin);}
     form.append(createRow,joinRow,error);app.replaceChildren(card);
     let cleanup:(()=>void)|undefined,ended=false;
     window.addEventListener('pagehide',()=>{ended=true;cleanup?.();},{once:true});
@@ -91,6 +97,7 @@ export async function startOnline():Promise<void>{
   const token=solo?'':displayOnly?secret():hostToken||peerToken();
   function peerToken(){const key=`fuse-peer-${code}`;const token=read(key)||secret();save(key,token);return token;}
   const forgetHostToken=()=>storage.removeItem(`fuse-room-${code}`);
+  if(!solo&&!displayOnly)save(LAST_ROOM_KEY,code);
   let id='',isHost=false,joined=false,settings=loadRoomSettings(localStorage),snapshot:ViewSnapshot|undefined;
   const frameTimes:number[]=[];const inputTimes:number[]=[];let previousFrame=performance.now(),inputAt=0;
   let lastRecap='',rejoinPending=false;
@@ -100,14 +107,18 @@ export async function startOnline():Promise<void>{
   // A terminal room close (4004) freezes this client: no further snapshots are applied and no input may leave, whatever a stale pointer or key does next.
   let roomEnded=false;
   const header=node('header','','online-header');const title=node('strong','','room-brand'),status=node('span','Connecting…','online-status'),audioButton=node('button','♫ RADIO'),musicButton=node('button','♫ MUSIC OFF'),results=node('button','RESULTS'),menu=node('button',solo?'EXIT':'ROOM');
-  title.append(node('span','FUSE'),node('span','RIDERS'));title.setAttribute('aria-label',`Fuse Riders · ${code}`);results.hidden=true;results.title='Reopen the match results';header.append(title,status,audioButton,musicButton,results,menu);
+  // Players read three link states (connected / connecting / trouble); the runtime's full wording stays in the tooltip and the ROOM diagnostics.
+  const statusAction=node('button','RETRY','online-status-action');statusAction.hidden=true;statusAction.onclick=()=>location.reload();
+  const roundChip=node('span','','online-round');roundChip.hidden=true;
+  let rawStatus='',replacedHost=false;
+  title.append(node('span','FUSE'),node('span','RIDERS'));title.setAttribute('aria-label',`Fuse Riders · ${code}`);results.hidden=true;results.title='Reopen the match results';header.append(title,status,statusAction,roundChip,audioButton,musicButton,results,menu);
   const joinForm=createJoinForm(storage,(playerName,avatarId)=>runtime.command({type:'join',name:playerName,avatarId}));
   const bootNote=node('p','Warming up the arena…','room-boot-note');
   const booting=node('div','','room-boot');booting.setAttribute('role','status');booting.append(node('p','PREPARING ROOM','room-boot-title'),node('strong',code,'shared-room-code'));
   // A joiner never mounts the host's boot card or QR lobby: until it holds a seat its whole page is the join card, with the same connect hint under the form.
   const joinPanel=role==='joiner'?createJoinCard(code,joinForm.element,bootNote):joinForm.element;if(role!=='joiner')booting.append(bootNote);
   // A room that never sends a snapshot must stop claiming progress: the note escalates to the same-network hint once the link stalls or ICE fails.
-  const bootAt=performance.now();const bootTick=()=>{bootNote.textContent=connectHint(status.textContent??'',performance.now()-bootAt);};
+  const bootAt=performance.now();const bootTick=()=>{bootNote.textContent=connectHint(rawStatus,performance.now()-bootAt);};
   const bootPoll=setInterval(bootTick,1000);
   const bootDone=()=>{if(!bootNote.isConnected)return;clearInterval(bootPoll);booting.remove();bootNote.remove();app.classList.remove('booting');};
   const overCard=node('div','','room-boot room-over-card'),overNote=node('p','Room ended — return to menu to start again','room-boot-note'),overHome=node('a','BACK TO MENU','room-over-home');
@@ -116,6 +127,28 @@ export async function startOnline():Promise<void>{
   app.replaceChildren(header,role==='joiner'?joinPanel:booting);
   let canvas=node('canvas','','online-arena');let renderScope=code;const presentation=mountArenaPresentation(canvas,drawArena,replacement=>{canvas=replacement;});const sprites=await loadThemeSprites(defaultTheme);
   const notice=node('div','','online-notice');
+  // In-arena moments (countdown, round result, overtime, final) and the elimination feed, shared by desktop, solo and the phone thirds.
+  const announcer=node('div','','online-announce');announcer.hidden=true;
+  const announceSmall=node('span','','announce-small'),announceBig=node('strong'),announceRows=node('div','','announce-rows'),announceHint=node('p','','announce-hint'),announceAction=node('button','PLAY AGAIN','announce-action');announceAction.hidden=true;
+  announceBig.setAttribute('aria-live','polite');announceBig.setAttribute('aria-atomic','true');
+  announcer.append(announceSmall,announceBig,announceRows,announceHint,announceAction);
+  const feed=node('div','','online-feed');feed.setAttribute('aria-live','polite');
+  const hud=node('div','','mobile-hud');const hudWho=node('span','','hud-who'),hudFire=node('span','','hud-fire'),hudWins=node('span','','hud-wins'),hudRound=node('span','','hud-round');hud.append(hudWho,hudFire,hudWins,hudRound);
+  let hudAvatar:AvatarId|undefined;
+  let lastAnnouncement='';const touchInput=navigator.maxTouchPoints>0||matchMedia('(pointer: coarse)').matches;
+  const showAnnouncement=(state:ViewSnapshot,visible:boolean)=>{
+    const announcement=announcementFor(state,id,touchInput);
+    const key=JSON.stringify(announcement)+visible+isHost;
+    if(key===lastAnnouncement)return;lastAnnouncement=key;
+    announcer.hidden=!visible||announcement.kind==='hidden';announcer.className='online-announce';if(announcement.kind!=='hidden')announcer.classList.add(announcement.kind);app.classList.toggle('announcing',!announcer.hidden);
+    announceRows.replaceChildren();announceHint.textContent='';announceAction.hidden=true;
+    if(announcement.kind==='countdown'){announceSmall.textContent=`ROUND ${announcement.round}`;announceBig.textContent=announcement.count;announceHint.textContent=announcement.hint;}
+    else if(announcement.kind==='overtime'){announceSmall.textContent='';announceBig.textContent=announcement.text;}
+    else if(announcement.kind==='round'){announceSmall.textContent=`ROUND ${announcement.round}`;announceBig.textContent=announcement.title;for(const line of announcement.placements)announceRows.append(node('span',line));announceHint.textContent=announcement.next;}
+    else if(announcement.kind==='final'){announceSmall.textContent=announcement.subtitle;announceBig.textContent=announcement.title;announceAction.hidden=!isHost||replacedHost||announcement.subtitle!=='MATCH COMPLETE';}
+  };
+  const feedLine=(text:string)=>{const line=node('span',text);feed.prepend(line);while(feed.childElementCount>4)feed.lastElementChild?.remove();setTimeout(()=>line.remove(),2600);};
+  const shake=()=>{if(canvas.hidden||reducedMotion())return;canvas.animate([{transform:'translate(4px,-3px)',filter:'brightness(1.7)'},{transform:'translate(-4px,3px)'},{transform:'translate(2px,1px)'},{transform:'none',filter:'brightness(1)'}],{duration:220});};
   const sharedLobby=node('section','','shared-lobby room-lobby');sharedLobby.hidden=true;
   const lobbyCopy=node('div','','room-lobby-copy');const lobbyHeading=node('h1');lobbyHeading.innerHTML='SCAN.<br>STEER.<br>SURVIVE.';
   lobbyCopy.append(node('p','PHONE PARTY // 2–5 RIDERS','room-eyebrow'),lobbyHeading,node('p','Pick your avatar. Grab your phone. Carve neon trails and blow up your friends’ plans.','room-intro'),node('p','STEER  ◀ ▶     HOLD · AIM · RELEASE','room-howto'));
@@ -145,8 +178,8 @@ export async function startOnline():Promise<void>{
   // A joiner's card is already on screen and may hold focus with a half-typed name (#132): build the room around it. Detaching a focused
   // input blurs it, and keystrokes that follow land nowhere, so an early typist lost their name and JOIN sent nothing.
   // header and joinPanel are app's only children here (line 116, and nothing else attaches before this point).
-  if(role==='joiner'){header.after(canvas,sharedLobby,scoreboard);joinPanel.after(footer,dialog);}
-  else app.replaceChildren(header,booting,canvas,sharedLobby,scoreboard,joinPanel,footer,dialog);
+  if(role==='joiner'){header.after(canvas,sharedLobby,scoreboard);joinPanel.after(footer,announcer,feed,hud,dialog);}
+  else app.replaceChildren(header,booting,canvas,sharedLobby,scoreboard,joinPanel,footer,announcer,feed,hud,dialog);
   help.onclick=()=>{dialogBody.replaceChildren(node('h2','Keyboard controls'),node('p','← / A — steer left'),node('p','→ / D — steer right'),node('p','SPACE — hold to charge, release to fire'));dialog.showModal();};
   // Move the existing actions, keeping their handlers and mobile/lobby destinations intact.
   const desktopQuery=matchMedia('(min-width: 1000px) and (hover: hover) and (pointer: fine)');
@@ -171,11 +204,11 @@ export async function startOnline():Promise<void>{
     const recap=buildMatchRecap(stats);const root=node('section','','match-recap-report');
     const heading=node('header','','recap-heading'),copy=node('div');copy.append(node('p',RECAP_KICKER,'kicker'),node('h2',RECAP_TITLE));heading.append(copy);root.append(heading);
     if(!recap.comparison.length){root.append(node('p',RECAP_EMPTY_MESSAGE,'recap-empty'));return root;}
-    const podium=node('div','','recap-podium');for(const entry of recap.podium){const card=node('article','',`podium-card podium-place-${entry.placement}`);card.style.setProperty('--player-color',entry.color);card.append(node('span',entry.placeLabel,'podium-place'),node('strong',entry.name),node('small',entry.winsLabel));podium.append(card);}
+    const podium=node('div','','recap-podium');for(const entry of recap.podium){const card=node('article','',`podium-card podium-place-${entry.placement}${entry.playerId===id?' is-you':''}`);card.style.setProperty('--player-color',entry.color);card.append(node('span',entry.placeLabel,'podium-place'),node('strong',entry.name),node('small',entry.winsLabel));podium.append(card);}
     const totals=node('div','','recap-totals');for(const total of recap.totals){const cell=node('div','','recap-total');cell.append(node('strong',total.value),node('small',total.label));totals.append(cell);}
     const awards=node('div','','recap-awards');for(const award of recap.awards){const card=node('article','','award-card');card.append(node('span',award.icon,'award-icon'),node('small',award.title),node('strong',award.winnerText),node('em',award.detail));awards.append(card);}
     const comparison=node('div','','recap-comparison');comparison.append(node('p',COMPARISON_KEY,'comparison-key'));const columns=node('div','','comparison-row comparison-header');for(const label of ['RIDER',...COMPARISON_COLUMNS.map(column=>column.label)])columns.append(node('span',label));comparison.append(columns);
-    for(const entry of recap.comparison){const row=node('div','','comparison-row');row.style.setProperty('--player-color',entry.color);const rider=node('span','','comparison-rider'),riderCopy=node('span');riderCopy.append(node('b',entry.riderLabel),node('small',entry.riderNote));rider.append(node('i'),riderCopy);row.append(rider);for(const column of COMPARISON_COLUMNS)row.append(node(column.key==='wins'?'strong':'span',entry[column.key],column.key==='pickups'?'pickup-counts':column.key==='deaths'?'death-counts':''));comparison.append(row);}
+    for(const entry of recap.comparison){const row=node('div','',`comparison-row${entry.playerId===id?' is-you':''}`);row.style.setProperty('--player-color',entry.color);const rider=node('span','','comparison-rider'),riderCopy=node('span');riderCopy.append(node('b',entry.riderLabel),node('small',entry.riderNote));rider.append(node('i'),riderCopy);row.append(rider);for(const column of COMPARISON_COLUMNS)row.append(node(column.key==='wins'?'strong':'span',entry[column.key],column.key==='pickups'?'pickup-counts':column.key==='deaths'?'death-counts':''));comparison.append(row);}
     root.append(podium,totals);if(recap.awards.length)root.append(awards);root.append(comparison);return root;
   };
   const openRecap=()=>{if(!snapshot)return;dialogBody.replaceChildren(renderRecap(snapshot.matchStats));dialogTitle.textContent='MATCH RESULTS';dialog.setAttribute('aria-label','Match results');dialog.classList.add('recap-dialog');rematch.hidden=!isHost;if(!sharedLobby.hidden){close.textContent='BACK TO LOBBY';close.setAttribute('aria-label','BACK TO LOBBY');}dialog.showModal();dialogBody.scrollTop=0;};
@@ -183,11 +216,17 @@ export async function startOnline():Promise<void>{
   const callbacks:Callbacks={
     // A host key the server rejects is a stale guest identity from an older build or a reused code: keep the identity under the peer key and re-enter as a joiner.
     ready:(peerId,host)=>{if(role==='host'&&!host){save(`fuse-peer-${code}`,token);forgetHostToken();location.reload();return;}id=peerId;isHost=host;joinForm.ready();hostControls.hidden=!host;},
-    status:text=>{status.textContent=text;status.title=text;if(bootNote.isConnected)bootTick();if(roomEnded){notice.textContent=text;overNote.textContent=text;}},
+    status:text=>{rawStatus=text;const plain=plainStatus(text);status.textContent=plain.text;status.title=text;status.dataset.raw=text;status.dataset.tone=plain.tone;
+      // A replaced host tab cannot act on the room any more: its actions go away and one button reclaims hosting (a reload re-authenticates with the stored token).
+      const replaced=/replaced/i.test(text);statusAction.hidden=!(plain.retry||replaced);statusAction.textContent=replaced?'TAKE OVER HOSTING':'RETRY';if(replaced){replacedHost=true;hostControls.hidden=true;announceAction.hidden=true;}
+      if(bootNote.isConnected)bootTick();if(roomEnded){notice.textContent=text;overNote.textContent=text;}},
     // An ended room is no longer joined play (#44): the thirds controller gives way to the ordinary header so the status
     // reads without opening ☰ MENU. `controller-only` is only ever recomputed from a state update, and none arrives after the end.
-    ended:()=>{bootDone();roomEnded=true;if(role==='host')forgetHostToken();clearControls();controls.hidden=true;joinPanel.hidden=true;hostControls.hidden=true;app.classList.add('room-over');app.classList.remove('controller-only');if(canvas.isConnected)canvas.after(overCard);else app.append(overCard);mobileLayout.update({joined,phase:snapshot?.phase??'lobby',displayOnly,host:isHost,ended:true});},
-    event:(event,matchId,round,tick)=>audio.director.message({type:'event',matchId,round,tick,event}),
+    ended:()=>{bootDone();roomEnded=true;if(role==='host')forgetHostToken();if(read(LAST_ROOM_KEY)===code)storage.removeItem(LAST_ROOM_KEY);announcer.hidden=true;hud.hidden=true;app.classList.remove('announcing');clearControls();controls.hidden=true;joinPanel.hidden=true;hostControls.hidden=true;app.classList.add('room-over');app.classList.remove('controller-only');if(canvas.isConnected)canvas.after(overCard);else app.append(overCard);mobileLayout.update({joined,phase:snapshot?.phase??'lobby',displayOnly,host:isHost,ended:true});},
+    event:(event,matchId,round,tick)=>{audio.director.message({type:'event',matchId,round,tick,event});
+      if(roomEnded)return;
+      if(event.type==='explosion')shake();
+      const line=eliminationLine(event,snapshot?.players??[],id);if(line){feedLine(line);if(event.type==='playerEliminated'&&event.playerId===id){shake();if(navigator.userActivation?.hasBeenActive)navigator.vibrate?.(180);}}},
     state:(state,rules,matchId)=>{
       if(roomEnded)return;
       bootDone();
@@ -206,7 +245,7 @@ export async function startOnline():Promise<void>{
       // Solo and a joined shared-screen rider have no lobby card (their pre-start screen is the arena or the controller), so their button stays CLOSE.
       const phoneLobby=mobileLayout.lobby();
       sharedLobby.hidden=!(state.phase==='lobby'||recapReady)||joining||(!phoneLobby&&(solo||(settings.mode==='shared'&&joined&&!displayOnly)||mobileLayout.active()));app.classList.toggle('room-waiting',!sharedLobby.hidden);
-      const ready=state.players.filter(p=>p.connected).length;lobbyCount.textContent=`${ready} ${ready===1?'rider':'riders'} ready`;lobbyEmpty.hidden=state.players.length>0;
+      const readyCount=state.players.filter(p=>p.connected).length;lobbyCount.textContent=readyCount<2?`${readyCount===1?'1 rider ready · ':''}Waiting for at least 2 riders`:`${readyCount} riders ready`;lobbyEmpty.hidden=state.players.length>0;
       for(const [playerId,row] of lobbyEntries)if(!state.players.some(p=>p.id===playerId)){row.entry.remove();lobbyEntries.delete(playerId);}
       for(const p of state.players){let row=lobbyEntries.get(p.id);if(!row){const entry=node('div','','room-rider'),head=createAvatarPortrait(p.avatarId),name=node('strong'),status=node('small'),info=node('div');info.append(name,status);entry.append(head,info);row={entry,head,name,status,avatar:p.avatarId};lobbyEntries.set(p.id,row);lobbyRiders.append(entry);}if(row.avatar!==p.avatarId){const head=createAvatarPortrait(p.avatarId);row.head.replaceWith(head);row.head=head;row.avatar=p.avatarId;}row.entry.style.setProperty('--rider-color',p.color);if(row.name.textContent!==p.name)row.name.textContent=p.name;row.status.textContent=p.connected?'READY':'OFFLINE';}
       roster.hidden=!sharedLobby.hidden;
@@ -228,18 +267,29 @@ export async function startOnline():Promise<void>{
       }
       addAI.disabled=state.players.length>=5;
       const startLabel=state.phase==='matchOver'?'REMATCH':'START RACE';if(start.textContent!==startLabel)start.textContent=startLabel;start.disabled=state.players.filter(p=>p.connected).length<2||!['lobby','matchOver'].includes(state.phase);
-      hostControls.hidden=!isHost;reset.disabled=state.phase==='lobby';reset.hidden=phoneLobby;share.hidden=solo||phoneLobby; // MAIN MENU means nothing in the lobby and a phone is never the TV; the phone screen has no room for dead buttons. Solo has no room to show either.
+      hostControls.hidden=!isHost||replacedHost;reset.disabled=state.phase==='lobby';reset.hidden=phoneLobby;share.hidden=solo||phoneLobby; // MAIN MENU means nothing in the lobby and a phone is never the TV; the phone screen has no room for dead buttons. Solo has no room to show either.
+      const clock=roundClock(state);roundChip.textContent=clock;roundChip.hidden=!clock||!sharedLobby.hidden;
+      showAnnouncement(state,sharedLobby.hidden&&!joining);
+      // Phone HUD: who you are, what the fire button would do, round wins and the clock. The thirds themselves stay transparent.
+      hud.hidden=!player||!mobileLayout.active();
+      if(player){if(hudAvatar!==player.avatarId){hudWho.replaceChildren(createAvatarPortrait(player.avatarId),node('b','YOU'));hudAvatar=player.avatarId;}hudFire.textContent=state.phase==='playing'&&player.alive?fireButton.textContent??'':player.alive||state.phase!=='playing'?'':'WIPED OUT';hudWins.textContent=`★ ${player.roundWins}`;hudRound.textContent=clock;}
     }
   };
   const runtime=solo?new LocalRuntime(settings,callbacks):new RoomRuntime(code,token,settings,callbacks);
   start.onclick=()=>{void audio.unlock();runtime.command({type:'action',action:snapshot?.phase==='matchOver'?'rematch':'start'});};
+  announceAction.onclick=()=>start.click();
   addAI.onclick=()=>runtime.command({type:'bot',action:'add'});
   // Link quality for the player: hidden unless asked for (?stats=1 or the menu), so a bad Wi-Fi is a fact, not a guess.
   const statsPanel=node('pre','','net-stats');statsPanel.hidden=solo||!url.searchParams.has('stats');app.append(statsPanel);
-  reset.onclick=()=>runtime.command({type:'action',action:'lobby'});rematch.onclick=()=>{dialog.close();start.click();};menu.onclick=()=>{dialogTitle.textContent=solo?'EXIT':'ROOM';dialog.setAttribute('aria-label',solo?'Exit':'Room');dialogBody.replaceChildren(node('p',solo?'End this solo run?':isHost?'End this room for everyone?':'Leave this room?'));const leave=node('button',solo?'BACK TO MENU':isHost?'END ROOM':'LEAVE ROOM');leave.onclick=async()=>{leave.disabled=true;leave.textContent='LEAVING…';runtime.stop();if(isHost&&!solo){const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),2500);try{await fetch(apiUrl(`/api/rooms/${code}/end`),{method:'POST',headers:{Authorization:`Bearer ${token}`},signal:controller.signal,keepalive:true});}catch{/* Host heartbeat expiry also closes the room if the network is unavailable. */}finally{clearTimeout(timer);}forgetHostToken();}location.href=appUrl();};dialogBody.append(leave);
+  reset.onclick=()=>runtime.command({type:'action',action:'lobby'});rematch.onclick=()=>{dialog.close();start.click();};menu.onclick=()=>{dialogTitle.textContent=solo?'EXIT':'ROOM';dialog.setAttribute('aria-label',solo?'Exit':'Room');dialogBody.replaceChildren(node('p',solo?'End this solo run?':isHost?'End this room for everyone?':'Leave this room?'));const leave=node('button',solo?'BACK TO MENU':isHost?'END ROOM':'LEAVE ROOM');leave.onclick=async()=>{leave.disabled=true;leave.textContent='LEAVING…';runtime.stop();if(isHost&&!solo){const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),2500);try{await fetch(apiUrl(`/api/rooms/${code}/end`),{method:'POST',headers:{Authorization:`Bearer ${token}`},signal:controller.signal,keepalive:true});}catch{/* Host heartbeat expiry also closes the room if the network is unavailable. */}finally{clearTimeout(timer);}forgetHostToken();}if(read(LAST_ROOM_KEY)===code)storage.removeItem(LAST_ROOM_KEY);location.href=appUrl();};dialogBody.append(leave);
+    const standings=[...(snapshot?.leaderboard??[])].sort((a,b)=>b.totalScoreUnits-a.totalScoreUnits||b.matchWins-a.matchWins||a.name.localeCompare(b.name));
+    if(standings.length){const list=node('div','','session-board');list.append(node('h2','Session standings'));let rank=0,previous:number|undefined;standings.forEach((entry,index)=>{if(entry.totalScoreUnits!==previous)rank=index+1;previous=entry.totalScoreUnits;const row=node('div','','session-row');if(entry.id===id)row.classList.add('is-you');const points=entry.totalScoreUnits/60;row.append(node('b',`#${rank}`),node('span',entry.id===id?`${entry.name} (you)`:entry.name),node('strong',`${Number.isInteger(points)?points:points.toFixed(1)} PTS`),node('small',`${entry.matchWins} ${entry.matchWins===1?'MATCH':'MATCHES'} · ${entry.roundWins} ${entry.roundWins===1?'ROUND':'ROUNDS'}`));list.append(row);});list.append(node('p','Round points: 5 · 3 · 2 · 1 · 0, ties share the place.','session-key'));dialogBody.append(list);}
     if(!solo){const diagnostics=node('pre','','link-diagnostics');diagnostics.textContent=app.dataset.linkDiagnostics??'collecting link diagnostics…';const statsToggle=node('button',statsPanel.hidden?'SHOW NETWORK STATS':'HIDE NETWORK STATS');statsToggle.onclick=()=>{statsPanel.hidden=!statsPanel.hidden;dialog.close();};dialogBody.append(statsToggle,node('p','LINK DIAGNOSTICS (redacted: candidate types and states, no addresses)'),diagnostics);const refresh=setInterval(()=>{if(!dialog.open){clearInterval(refresh);return;}diagnostics.textContent=app.dataset.linkDiagnostics??diagnostics.textContent;},1000);}
     dialog.showModal();};
-  avatarButton.onclick=()=>{dialogBody.replaceChildren(node('h2','Choose your avatar'));const picker=createAvatarPicker(storage,chosen=>{joinForm.picker.sync(chosen);if(joined)runtime.command({type:'avatar',avatarId:chosen});dialog.close();});dialogBody.append(picker.element);dialog.showModal();};
+  avatarButton.onclick=()=>{dialogBody.replaceChildren(node('h2','Your avatar'));const picker=createAvatarPicker(storage,chosen=>{joinForm.picker.sync(chosen);if(joined)runtime.command({type:'avatar',avatarId:chosen});dialog.close();});
+    // Avatars other riders already wear are marked, not blocked: two foxes are allowed, but nobody picks one by accident.
+    picker.element.querySelectorAll<HTMLButtonElement>('.avatar-option').forEach(option=>{const owner=snapshot?.players.find(p=>p.id!==id&&p.avatarId===option.dataset.avatarId);option.classList.toggle('taken',Boolean(owner));option.title=owner?`${owner.name} has this one`:'';});
+    dialogBody.append(picker.element);dialog.showModal();};
   // The lobby card already carries the QR and the copyable link, so this opens the shared-screen display directly instead of a dialog that repeats them.
   share.title='Open this room on a shared screen';share.onclick=()=>{window.open(appUrl(`?room=${code}&display=1`),'_blank','noopener');};
   settingsButton.onclick=()=>{
@@ -269,6 +319,6 @@ export async function startOnline():Promise<void>{
     app.dataset.metrics=JSON.stringify({...connection,sentBytes:runtime.transport.sentBytes,frameP95:percentile(frameTimes,.95),inputP95:percentile(inputTimes,.95),tick:snapshot?.tick??0});
     return runtime instanceof RoomRuntime?runtime.transport.diagnostics():undefined;
   }).then(report=>{if(report)app.dataset.linkDiagnostics=formatLinkDiagnostics(report.links,report.ice,report.socket);});},1000);
-  function frame(){const now=performance.now();frameTimes.push(now-previousFrame);previousFrame=now;if(frameTimes.length>300)frameTimes.shift();if(inputAt){inputTimes.push(now-inputAt);inputAt=0;if(inputTimes.length>100)inputTimes.shift();}const predicted=runtime.render();if(predicted&&(!canvas.hidden||(!sharedLobby.hidden&&!canvas.dataset.renderer))){presentation.render(predicted,now,defaultTheme,sprites,renderScope);if(responseBenchmark&&canvas.dataset.renderer?.startsWith('phaser-')&&canvas.dataset.rendererStatus!=='context-lost')sample({kind:'response-render',epochAt:performance.timeOrigin+performance.now(),scope:renderScope,phase:predicted.phase,tick:predicted.tick,powerupsDisabled:Object.values(settings.weights).every(weight=>weight===0),players:predicted.players.map(p=>({id:p.id,angle:p.angle,alive:p.alive,drunkUntilTick:p.drunkUntilTick,invulnerableUntilTick:p.invulnerableUntilTick,portalCooldownUntilTick:p.portalCooldownUntilTick,shielded:p.shielded}))});if(benchmark&&(benchmarkInput||now-lastBenchmarkRender>=100)){const p=predicted.players.find(p=>p.id===id);sample({kind:'prediction',renderAt:now,tick:predicted.tick,inputSeq:benchmarkInput?.seq,inputAt:benchmarkInput?.at,pose:p?{x:p.x,y:p.y,angle:p.angle}:undefined});benchmarkInput=undefined;lastBenchmarkRender=now;}}requestAnimationFrame(frame);}requestAnimationFrame(frame);
+  function frame(){const now=performance.now();frameTimes.push(now-previousFrame);previousFrame=now;if(frameTimes.length>300)frameTimes.shift();if(inputAt){inputTimes.push(now-inputAt);inputAt=0;if(inputTimes.length>100)inputTimes.shift();}const predicted=runtime.render();if(predicted&&(!canvas.hidden||(!sharedLobby.hidden&&!canvas.dataset.renderer))){presentation.render(predicted,now,defaultTheme,sprites,renderScope,id);if(responseBenchmark&&canvas.dataset.renderer?.startsWith('phaser-')&&canvas.dataset.rendererStatus!=='context-lost')sample({kind:'response-render',epochAt:performance.timeOrigin+performance.now(),scope:renderScope,phase:predicted.phase,tick:predicted.tick,powerupsDisabled:Object.values(settings.weights).every(weight=>weight===0),players:predicted.players.map(p=>({id:p.id,angle:p.angle,alive:p.alive,drunkUntilTick:p.drunkUntilTick,invulnerableUntilTick:p.invulnerableUntilTick,portalCooldownUntilTick:p.portalCooldownUntilTick,shielded:p.shielded}))});if(benchmark&&(benchmarkInput||now-lastBenchmarkRender>=100)){const p=predicted.players.find(p=>p.id===id);sample({kind:'prediction',renderAt:now,tick:predicted.tick,inputSeq:benchmarkInput?.seq,inputAt:benchmarkInput?.at,pose:p?{x:p.x,y:p.y,angle:p.angle}:undefined});benchmarkInput=undefined;lastBenchmarkRender=now;}}requestAnimationFrame(frame);}requestAnimationFrame(frame);
   installRoomLifecycle(window,{stop:()=>runtime.stop(),destroy:()=>presentation.destroy(),reload:()=>location.reload()});
 }

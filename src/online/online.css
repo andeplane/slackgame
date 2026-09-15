@@ -176,3 +176,62 @@
 .online-app.phone-lobby .room-lobby-footer{grid-column:2}
 .online-app.phone-lobby .room-qr-card[hidden]~.room-riders{grid-column:1}
 .online-app.phone-lobby .room-qr-card[hidden]~.room-lobby-footer{grid-column:2;grid-row:1/3}}
+
+/* --- AAA pass: in-arena announcements, elimination feed, link status tones, header hierarchy, phone HUD. --- */
+.online-announce{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);z-index:40;display:grid;gap:8px;justify-items:center;text-align:center;padding:18px 34px;max-width:min(92vw,720px);box-sizing:border-box;background:#020715db;border:3px solid #ff2e9d;box-shadow:0 0 40px #ff2e9d61;pointer-events:none}
+.online-announce[hidden]{display:none!important}
+.online-announce .announce-small{color:#00d9ff;font-weight:900;letter-spacing:.18em;font-size:12px}
+.online-announce strong{display:block;font-family:'Press Start 2P',ui-monospace,monospace;font-size:clamp(22px,4.5vw,56px);line-height:1.2;color:#fff;text-shadow:5px 5px 0 #842562,0 0 22px #ff2e9d;overflow-wrap:anywhere}
+.online-announce.countdown strong{font-size:clamp(56px,14vw,120px)}
+.online-announce .announce-rows{display:flex;flex-wrap:wrap;justify-content:center;gap:4px 16px;color:#b9cae6;font-size:13px}
+.online-announce .announce-rows span{white-space:nowrap}
+.online-announce .announce-hint{margin:0;color:#ffe46b;font-size:11px;letter-spacing:.08em;max-width:520px}
+.online-announce .announce-hint:empty{display:none}
+.online-announce.overtime{top:max(58px,8vh);transform:translateX(-50%);padding:6px 14px;border-color:#ff8b22;box-shadow:0 0 24px #ff8b2255}
+.online-announce.overtime strong{font-size:13px;color:#ffb85a;text-shadow:none}
+.online-announce.final{animation:announce-pop .4s ease-out}
+.online-announce.round{animation:announce-pop .3s ease-out}
+.online-app .online-announce .announce-action{pointer-events:auto;min-width:200px;min-height:48px;font-weight:900;letter-spacing:1px;background:var(--player-color);color:#030919;border-color:#fff;box-shadow:0 0 18px color-mix(in srgb,var(--player-color) 60%,transparent)}
+@keyframes announce-pop{from{transform:translate(-50%,-50%) scale(.85);opacity:0}to{transform:translate(-50%,-50%) scale(1);opacity:1}}
+@media(prefers-reduced-motion:reduce){.online-announce{animation:none!important}}
+.online-app.announcing .online-notice{visibility:hidden}
+.online-feed{position:fixed;left:50%;top:max(96px,14vh);transform:translateX(-50%);z-index:39;display:grid;gap:4px;justify-items:center;pointer-events:none}
+.online-feed span{padding:4px 12px;background:#071428d9;border:1px solid #ffffff2e;color:#ffe8f4;font-size:12px;letter-spacing:.04em;animation:feed-in .2s ease-out;white-space:nowrap}
+.online-feed:empty{display:none}
+@keyframes feed-in{from{transform:translateY(-8px);opacity:0}to{transform:none;opacity:1}}
+.online-status{display:inline-flex;align-items:center;gap:6px}
+.online-status::before{content:'';width:8px;height:8px;border-radius:50%;background:#ffd25a;box-shadow:0 0 8px #ffd25a;flex:0 0 auto;animation:status-pulse 1.2s infinite}
+.online-status[data-tone=ok]::before{background:#6dff9a;box-shadow:0 0 8px #6dff9a;animation:none}
+.online-status[data-tone=bad]::before{background:#ff5a7a;box-shadow:0 0 8px #ff5a7a;animation:none}
+.online-status[data-tone=bad]{color:#ffb3c2}
+.online-status:empty::before{display:none}
+@keyframes status-pulse{50%{opacity:.35}}
+.online-app .online-status-action{border-color:#ff5a7a;color:#ffd6de;font-size:12px;min-height:34px;padding:4px 10px}
+.online-round{padding:4px 10px;border:1px solid #1b708b;background:#030d1fcc;color:#bdeeff;font-size:11px;letter-spacing:.12em;white-space:nowrap;flex:0 0 auto!important}
+.online-round[hidden]{display:none!important}
+/* Header hierarchy on desktop: brand and actions on one steady row, the roster on its own row, one filled primary action (START / REMATCH). */
+.desktop-game>.online-header{flex-wrap:wrap;row-gap:4px}
+.desktop-game .online-roster{order:3;flex:0 1 auto;justify-content:center;margin:0 auto}
+.desktop-game .online-host{order:2}
+.desktop-game .online-header>button,.desktop-game .online-header>.online-round{order:4}
+.desktop-game .online-header>.online-status{position:static;max-width:30%;padding:0 6px;font-size:11px;background:none}
+.desktop-game .online-host button:first-child:not(:disabled){background:var(--player-color);color:#030919;font-weight:900;letter-spacing:1px;border-color:#fff}
+.desktop-game .online-header>.desktop-help,.desktop-game .online-header>button[aria-label=Fullscreen]{opacity:.75}
+.desktop-game .online-notice{top:calc(100% + 8px)}
+.online-app .landing-rejoin{border-color:#b6ff4d;color:#e6ffc6;white-space:nowrap}
+/* Recap and standings: the local rider is outlined so a table of five reads at a glance. */
+.match-recap-report .podium-card.is-you{outline:2px solid #fff;outline-offset:3px}
+.match-recap-report .comparison-row.is-you{background:#ffffff12;box-shadow:inset 3px 0 0 #fff}
+.session-board{display:grid;gap:6px;margin-bottom:14px}
+.session-board h2{margin:0 0 4px;font-size:15px}
+.session-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:4px 10px;align-items:center;padding:6px 8px;border:1px solid #20365f;background:#040d24;font-size:13px}
+.session-row.is-you{border-color:#fff}.session-row>span{min-width:0;overflow-wrap:anywhere}
+.session-row b{color:#ffe46b}.session-row strong{color:#fff}.session-row small{grid-column:2/-1;color:#7c93b8;font-size:10px;letter-spacing:1px}
+.session-key{margin:0;color:#7c93b8;font-size:11px}
+/* Avatar dialog: labels never split mid-word; avatars other riders wear are marked. */
+.online-app .game-dialog .avatar-options{grid-template-columns:repeat(auto-fill,minmax(78px,1fr))}
+.online-app .game-dialog .avatar-option{overflow-wrap:normal;white-space:nowrap;font-size:11px;position:relative}
+.online-app .game-dialog .avatar-option.taken{opacity:.55}
+.online-app .game-dialog .avatar-option.taken::after{content:'TAKEN';position:absolute;top:4px;right:4px;font-size:8px;letter-spacing:1px;color:#ffb3c2;background:#3b1734;padding:1px 4px}
+.mobile-hud{display:none}
+.online-announce.round~.online-feed,.online-announce.final~.online-feed{display:none}

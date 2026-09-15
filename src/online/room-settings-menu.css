@@ -1,1 +1,6 @@
 .online-app .game-dialog .room-choice{border:0;margin:0 0 22px;padding:0;min-width:0;display:grid;gap:8px}.room-choice legend{padding:0 0 10px;color:#9cbad4;font-size:13px;text-transform:uppercase;letter-spacing:1px}.online-app .game-dialog .room-choice label{display:flex;gap:12px;margin:0;padding:14px;border:1px solid #365477;background:#061125;cursor:pointer;min-height:48px;box-sizing:border-box}.room-choice label:has(input:checked){border-color:#00d9ff!important;background:#063349!important;color:#b4f7ff}.room-choice input{width:18px;height:18px;min-height:0!important;margin:0;accent-color:#00d9ff;flex:none}.room-choice:disabled{opacity:.6}.room-choice label:has(input:focus-visible){outline:2px solid #ff49b0;outline-offset:2px}
+
+.powerup-presets{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 12px}.online-app .powerup-presets button{flex:1 1 auto;font-size:12px;min-height:38px;border-color:#53def7}
+.powerup-row{border-bottom:1px solid #1a2b48;padding:4px 0 8px}.online-app .powerup-row label{margin:4px 0}
+.powerup-rarity{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}.online-app .powerup-rarity button{min-height:32px;font-size:10px;letter-spacing:1px;padding:4px;border-color:#365477;color:#a3b9cb}
+.online-app .powerup-rarity button[aria-pressed=true]{background:var(--player-color);color:#030919;border-color:#fff;font-weight:900}

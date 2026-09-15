@@ -282,3 +282,9 @@ details.audio-controls > .audio-panel.radio { width: min(380px, calc(100vw - 24p
 .ai-remove{margin-left:auto;background:#08152b;color:#eefaff;border:1px solid #365477;min-width:36px;min-height:36px;cursor:pointer}.ai-remove:disabled{opacity:.4}
 
 .host-tools{display:flex;gap:6px;align-items:center}
+
+/* AAA pass: on a laptop-sized host window the score cards wrap under the toolbar instead of drawing over the timer. */
+@media (max-width: 1240px) {
+  .topbar { grid-template-columns: auto repeat(7, auto); justify-content: space-between; }
+  .scores { grid-column: 1 / -1; grid-row: 2; justify-content: flex-start; flex-wrap: wrap; }
+}

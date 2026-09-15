@@ -36,3 +36,23 @@
 .mobile-play.controller-only>.mobile-control-hints{animation:none;opacity:1}
 /* Hints belong to a round: hidden in the lobby, replayed on every countdown/play entry. */
 .mobile-play.mobile-lobby>.mobile-control-hints{animation:none;opacity:0}
+/* --- AAA pass: a slim HUD over the thirds, the menu overlay no longer covers the roster, announcements sit above the thirds. --- */
+.mobile-play>.mobile-hud:not([hidden]){display:flex;position:absolute;top:max(8px,env(safe-area-inset-top));left:max(8px,env(safe-area-inset-left));z-index:12;gap:10px;align-items:center;padding:4px 10px;background:#071428cc;border:1px solid #ffffff22;color:#eefaff;font-size:12px;pointer-events:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;max-width:calc(100vw - 180px);white-space:nowrap;overflow:hidden}
+.mobile-hud .hud-who{display:inline-flex;align-items:center;gap:6px}.mobile-hud .hud-who .avatar-portrait{width:22px;height:22px;flex:0 0 22px}.mobile-hud .hud-who b{color:var(--player-color)}
+.mobile-hud .hud-fire{color:#ffe46b;letter-spacing:.04em}.mobile-hud .hud-fire:empty{display:none}
+.mobile-hud .hud-wins{color:#fff}.mobile-hud .hud-round{color:#8ba3c0;letter-spacing:.08em}.mobile-hud .hud-round:empty{display:none}
+.mobile-play.mobile-tools-open>.mobile-hud,.mobile-play.mobile-portrait>.mobile-hud{display:none!important}
+.mobile-play .online-notice{top:max(8px,env(safe-area-inset-top));left:auto;right:max(56px,calc(env(safe-area-inset-right) + 48px));transform:none;max-width:40vw}
+.mobile-play .online-announce{max-width:80vw;padding:12px 22px;z-index:13}
+.mobile-play .online-announce.countdown strong{font-size:clamp(44px,12vh,80px)}
+.mobile-play .online-feed{top:max(50px,calc(env(safe-area-inset-top) + 44px));z-index:13}
+.mobile-play.mobile-tools-open .online-announce,.mobile-play.mobile-portrait .online-announce,.mobile-play.mobile-portrait .online-feed{display:none!important}
+/* The open menu stacks header panel, roster strip and host actions without overlap on a 360px-tall phone. */
+.mobile-play.mobile-tools-open .online-header{max-height:calc(100dvh - 60px - 210px)}
+.mobile-play .online-announce{max-height:calc(100dvh - 24px);overflow:hidden;gap:4px;padding:8px 18px}
+.mobile-play .online-announce strong{font-size:clamp(18px,6.5vh,34px)}
+.mobile-play .online-announce .announce-rows{font-size:11px;gap:2px 10px}
+.mobile-play .online-announce .announce-hint{font-size:10px}
+/* Five roster cards fit the menu strip in one or two rows on a 360px-tall phone: compact cards, no clipped names. */
+.mobile-play.mobile-tools-open .online-roster:not([hidden]){gap:3px 6px;padding:5px 6px;max-height:70px}
+.mobile-play.mobile-tools-open .online-score-card{padding:1px 5px;gap:4px;font-size:11px}.mobile-play.mobile-tools-open .online-score-card .avatar-portrait{width:18px;height:18px;flex-basis:18px}.mobile-play.mobile-tools-open .online-score-card button{min-height:24px;min-width:24px;padding:0 5px;font-size:12px}

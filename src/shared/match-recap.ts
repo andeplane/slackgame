@@ -11,11 +11,17 @@ export { durationText };
 export const RECAP_KICKER = 'MATCH COMPLETE // AFTER ACTION REPORT';
 export const RECAP_TITLE = 'Grid legends';
 export const RECAP_EMPTY_MESSAGE = 'Compiling the after action report…';
-export const COMPARISON_KEY = 'BOMBS = EXPLODED / PLACED   ·   DEATHS = WALL / TRAIL / BLAST / RIDER';
+export const COMPARISON_KEY = 'BOMBS = EXPLODED / PLACED   ·   DISTANCE IN ARENA UNITS   ·   — = NONE';
 export const PODIUM_PLACES = 3;
 
 export function distanceText(units: number): string {
-  return `${Math.round(Math.max(0, units))}u`;
+  return String(Math.round(Math.max(0, units)));
+}
+
+/** Only the non-zero counters, as words: "blast 1 · star 2"; an em dash when nothing was recorded. */
+export function countList(entries: ReadonlyArray<readonly [label: string, count: number]>): string {
+  const listed = entries.filter(([, count]) => count > 0).map(([label, count]) => `${label} ${count}`);
+  return listed.length ? listed.join(' · ') : '—';
 }
 
 /** Placement first, then seat order, so ties keep a stable, explainable order. */
@@ -139,7 +145,7 @@ export const COMPARISON_COLUMNS: ReadonlyArray<{ key: ComparisonColumnKey; label
   { key: 'wins', label: 'WINS' },
   { key: 'survived', label: 'SURVIVED' },
   { key: 'best', label: 'BEST' },
-  { key: 'distance', label: 'DIST' },
+  { key: 'distance', label: 'DISTANCE' },
   { key: 'bombs', label: 'BOMBS' },
   { key: 'eliminations', label: 'KOs' },
   { key: 'pickups', label: 'PICKUPS' },
@@ -163,9 +169,9 @@ export function comparisonRows(stats: ReadonlyArray<MatchPlayerStats>): Comparis
       distance: distanceText(entry.distanceUnits),
       bombs: `${entry.bombsExploded}/${entry.bombsPlaced}`,
       eliminations: String(entry.eliminations),
-      pickups: `${entry.pickupsCollected} · B${entry.blastPickups} S${entry.starPickups} 🍺${entry.beerPickups} I${entry.inkPickups} T${entry.triplePickups} F${entry.fivePickups} A${entry.targetPickups} O${entry.shieldPickups} P${entry.portalPickups}/${entry.portalTransits}`,
-      star: durationText(entry.invulnerableTicks),
-      deaths: `W${deaths.wall} T${deaths.trail} X${deaths.explosion} R${deaths.rider}`,
+      pickups: entry.pickupsCollected ? `${entry.pickupsCollected} · ${countList([['blast', entry.blastPickups], ['star', entry.starPickups], ['beer', entry.beerPickups], ['ink', entry.inkPickups], ['triple', entry.triplePickups], ['five', entry.fivePickups], ['target', entry.targetPickups], ['shield', entry.shieldPickups], ['portal', entry.portalPickups]])}${entry.portalTransits ? ` · ${entry.portalTransits} ${entry.portalTransits === 1 ? 'jump' : 'jumps'}` : ''}` : '—',
+      star: entry.invulnerableTicks ? durationText(entry.invulnerableTicks) : '—',
+      deaths: countList([['wall', deaths.wall], ['trail', deaths.trail], ['blast', deaths.explosion], ['rider', deaths.rider]]),
     };
   });
 }
